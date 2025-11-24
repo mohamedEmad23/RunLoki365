@@ -1,0 +1,11 @@
+runloki365 (1.0.0) unstable; urgency=medium
+
+  * Initial release
+  * CPU, memory, and storage monitoring
+  * Animated tray icon with 3 runners (Tux, Cat, Parrot)
+  * Theme detection and switching
+  * Settings persistence
+  * Launch at startup support
+  * AppIndicator integration
+
+ -- Kiro-Workspace Team <kiro@workspace.com>  Sun, 24 Nov 2024 20:00:00 +0000

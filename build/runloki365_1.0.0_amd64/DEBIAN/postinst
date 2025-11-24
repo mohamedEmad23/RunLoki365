@@ -1,0 +1,25 @@
+#!/bin/bash
+# Post-installation script for runloki365
+
+set -e
+
+# Create symlink in /usr/local/bin
+if [ ! -L /usr/local/bin/runloki365 ]; then
+    ln -s /opt/runloki365/runloki365 /usr/local/bin/runloki365
+fi
+
+# Ensure correct permissions
+chmod +x /opt/runloki365/runloki365
+
+# Update desktop database
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications || true
+fi
+
+echo "RunLoki365 installed successfully!"
+echo "Run 'runloki365' to start the application."
+echo ""
+echo "Note for GNOME users: Install 'gnome-shell-extension-appindicator'"
+echo "to see the tray icon in GNOME Shell."
+
+exit 0
