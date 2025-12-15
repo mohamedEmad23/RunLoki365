@@ -104,6 +104,10 @@ public class ApplicationController
         {
             _logger.Information("Stopping ApplicationController");
 
+            // Unsubscribe from events to prevent memory leaks
+            _animationManager.FrameChanged -= OnFrameChanged;
+            _systemMonitor.CpuUsageChanged -= OnCpuUsageChanged;
+
             // Stop tooltip timer
             if (_tooltipTimerId != 0)
             {

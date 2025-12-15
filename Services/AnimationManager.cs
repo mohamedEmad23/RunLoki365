@@ -67,10 +67,10 @@ public class AnimationManager : IAnimationManager, IDisposable
     {
         // Aggressive FPS scaling for responsive animation
         // Base FPS ranges by multiplier:
-        // 1 (slow):      5-30 FPS
-        // 2 (medium):    8-60 FPS  
-        // 3 (fast):      10-90 FPS
-        // 4 (very fast): 15-120 FPS
+        // 1 (slow):      7-30 FPS
+        // 2 (medium):    9-60 FPS  
+        // 3 (fast):      11-90 FPS
+        // 4 (very fast): 13-120 FPS
         
         var minFps = 5 + (_fpsMultiplier * 2);  // 7, 9, 11, 13
         var maxFps = 30 * _fpsMultiplier;        // 30, 60, 90, 120
