@@ -8,6 +8,11 @@ namespace RunLoki365.Interfaces;
 public interface IAnimationManager
 {
     /// <summary>
+    /// Event fired when the animation frame changes.
+    /// </summary>
+    event EventHandler<Pixbuf?>? FrameChanged;
+
+    /// <summary>
     /// Gets the currently active runner.
     /// </summary>
     IRunner? CurrentRunner { get; }

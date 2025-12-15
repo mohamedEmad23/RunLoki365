@@ -73,6 +73,9 @@ public class ApplicationController
 
             // Wire up CPU usage event
             _systemMonitor.CpuUsageChanged += OnCpuUsageChanged;
+            
+            // Wire up frame change event to update icon
+            _animationManager.FrameChanged += OnFrameChanged;
 
             // Start monitoring
             _systemMonitor.StartMonitoring();
@@ -132,17 +135,26 @@ public class ApplicationController
         {
             // Update animation speed based on CPU usage
             _animationManager.UpdateAnimationSpeed(cpuUsage);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error handling CPU usage change");
+        }
+    }
 
-            // Update icon with current frame
-            var frame = _animationManager.GetCurrentFrame();
+    private void OnFrameChanged(object? sender, Gdk.Pixbuf? frame)
+    {
+        try
+        {
             if (frame != null)
             {
+                // Animation tick is already on GTK main thread (GLib.Timeout)
                 _appIndicator.UpdateIcon(frame);
             }
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error handling CPU usage change");
+            _logger.Error(ex, "Error handling frame change");
         }
     }
 

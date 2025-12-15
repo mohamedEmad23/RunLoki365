@@ -14,10 +14,15 @@ public class AnimationManager : IAnimationManager, IDisposable
     private readonly IThemeManager _themeManager;
     private IRunner? _currentRunner;
     private int _currentFrame;
-    private int _fpsLimit = 30;
+    private int _fpsMultiplier = 3; // 1=slow, 2=medium, 3=fast, 4=very fast
     private int _currentFps = 10;
+    private int _timerFps = 0; // The FPS the current timer was started with
     private uint _timeoutId;
     private bool _isRunning;
+    private bool _restartPending = false;
+
+    /// <inheritdoc/>
+    public event EventHandler<Gdk.Pixbuf?>? FrameChanged;
 
     public AnimationManager(ILogger logger, IThemeManager themeManager)
     {
@@ -42,35 +47,52 @@ public class AnimationManager : IAnimationManager, IDisposable
     /// <inheritdoc/>
     public void SetFpsLimit(int limit)
     {
-        if (limit != 10 && limit != 20 && limit != 30 && limit != 40)
+        // Map old FPS values to new multiplier system:
+        // 10 -> 1 (slow), 20 -> 2 (medium), 30 -> 3 (fast), 40 -> 4 (very fast)
+        _fpsMultiplier = limit switch
         {
-            throw new ArgumentException("FPS limit must be 10, 20, 30, or 40", nameof(limit));
-        }
+            10 => 1,
+            20 => 2,
+            30 => 3,
+            40 => 4,
+            _ => 3 // default to fast
+        };
 
-        _logger.Information("Setting FPS limit to {Limit}", limit);
-        _fpsLimit = limit;
+        _logger.Information("Setting FPS multiplier to {Multiplier} (from limit {Limit})", _fpsMultiplier, limit);
         UpdateAnimationSpeed(GetLastCpuUsage());
     }
 
     /// <inheritdoc/>
     public void UpdateAnimationSpeed(double cpuUsage)
     {
-        // Calculate target FPS: 10 + (cpu_usage * 0.3)
-        // At 0% CPU: 10 FPS
-        // At 100% CPU: 40 FPS
-        var calculatedFps = 10 + (cpuUsage * 0.3);
-        var targetFps = (int)Math.Min(_fpsLimit, calculatedFps);
+        // Aggressive FPS scaling for responsive animation
+        // Base FPS ranges by multiplier:
+        // 1 (slow):      5-30 FPS
+        // 2 (medium):    8-60 FPS  
+        // 3 (fast):      10-90 FPS
+        // 4 (very fast): 15-120 FPS
+        
+        var minFps = 5 + (_fpsMultiplier * 2);  // 7, 9, 11, 13
+        var maxFps = 30 * _fpsMultiplier;        // 30, 60, 90, 120
+        
+        var cpuFactor = Math.Clamp(cpuUsage, 0, 100) / 100.0;
+        
+        // Use exponential scaling for more dramatic speed increase at high CPU
+        var exponentialFactor = Math.Pow(cpuFactor, 0.7); // Makes it ramp up faster
+        var targetFps = (int)(minFps + exponentialFactor * (maxFps - minFps));
+        
+        targetFps = Math.Clamp(targetFps, minFps, maxFps);
 
         if (targetFps != _currentFps)
         {
+            _logger.Debug("Animation speed updated: {Fps} FPS (CPU: {Cpu:F1}%, Multiplier: {Mult})", 
+                targetFps, cpuUsage, _fpsMultiplier);
             _currentFps = targetFps;
-            _logger.Debug("Animation speed updated: {Fps} FPS (CPU: {Cpu:F1}%)", _currentFps, cpuUsage);
-
-            // Restart timer with new interval
-            if (_isRunning)
+            
+            // If timer is running at different FPS, schedule a restart
+            if (_isRunning && _timerFps != _currentFps && !_restartPending)
             {
-                StopAnimation();
-                StartAnimation();
+                _restartPending = true;
             }
         }
 
@@ -106,6 +128,7 @@ public class AnimationManager : IAnimationManager, IDisposable
 
         var intervalMs = _currentFps > 0 ? 1000 / _currentFps : 100;
         _timeoutId = GLib.Timeout.Add((uint)intervalMs, OnAnimationTick);
+        _timerFps = _currentFps; // Track what FPS this timer was started with
         _isRunning = true;
 
         _logger.Information("Animation started at {Fps} FPS ({Interval}ms interval)", _currentFps, intervalMs);
@@ -135,8 +158,27 @@ public class AnimationManager : IAnimationManager, IDisposable
         {
             AdvanceFrame();
 
-            // Update interval if FPS changed
-            var expectedInterval = _currentFps > 0 ? 1000 / _currentFps : 100;
+            // Check if FPS changed and we need to restart with new interval
+            if (_restartPending)
+            {
+                _restartPending = false;
+                
+                // Stop current timer and start new one with updated interval
+                // Return false to stop this timer, then start new one
+                GLib.Idle.Add(() =>
+                {
+                    if (_timeoutId != 0)
+                    {
+                        // Timer already stopped by returning false
+                    }
+                    _timeoutId = 0;
+                    _isRunning = false;
+                    StartAnimation();
+                    return false;
+                });
+                return false; // Stop current timer
+            }
+            
             return true; // Continue timer
         }
         catch (Exception ex)
@@ -154,6 +196,10 @@ public class AnimationManager : IAnimationManager, IDisposable
         }
 
         _currentFrame = (_currentFrame + 1) % _currentRunner.FrameCount;
+        
+        // Fire event to notify subscribers of frame change
+        var frame = GetCurrentFrame();
+        FrameChanged?.Invoke(this, frame);
     }
 
     private double _lastCpuUsage = 0.0;
