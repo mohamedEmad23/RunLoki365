@@ -15,7 +15,10 @@ public class AppIndicator3Service : IAppIndicatorService
     private IntPtr _menu;
     private bool _isInitialized;
     private string _iconTempPath;
-    private int _iconCounter = 0;
+    private int _currentBuffer = 0; // Double-buffer: 0 or 1
+    private string[] _iconPaths = new string[2];
+    private DateTime _lastIconUpdate = DateTime.MinValue;
+    private const int MinIconIntervalMs = 50; // Cap at 20 FPS for stability
 
     public AppIndicator3Service(ILogger logger)
     {
@@ -25,6 +28,10 @@ public class AppIndicator3Service : IAppIndicatorService
         var tempDir = Path.Combine(Path.GetTempPath(), "runloki365-icons");
         Directory.CreateDirectory(tempDir);
         _iconTempPath = tempDir;
+        
+        // Pre-create icon file paths for double-buffering
+        _iconPaths[0] = Path.Combine(_iconTempPath, "icon_a.png");
+        _iconPaths[1] = Path.Combine(_iconTempPath, "icon_b.png");
     }
 
     /// <inheritdoc/>
@@ -81,28 +88,25 @@ public class AppIndicator3Service : IAppIndicatorService
 
         try
         {
-            // AppIndicator requires icon files, not pixbufs
-            // Save the pixbuf to a temp file and update the icon path
-            var iconPath = Path.Combine(_iconTempPath, $"icon_{_iconCounter}.png");
+            // Throttle icon updates to prevent glitching
+            var now = DateTime.UtcNow;
+            var elapsed = (now - _lastIconUpdate).TotalMilliseconds;
+            if (elapsed < MinIconIntervalMs)
+            {
+                return; // Skip this update, too soon
+            }
+            _lastIconUpdate = now;
+
+            // Double-buffering: write to inactive buffer, then switch
+            var nextBuffer = 1 - _currentBuffer;
+            var iconPath = _iconPaths[nextBuffer];
             
-            // Save pixbuf to PNG file (null arrays for default PNG options)
+            // Save pixbuf to the inactive buffer file
             pixbuf.Savev(iconPath, "png", new string[0], new string[0]);
             
-            // Update AppIndicator icon
+            // Switch to the new buffer and update AppIndicator
+            _currentBuffer = nextBuffer;
             app_indicator_set_icon_full(_indicator, iconPath, "RunLoki365");
-            
-            // Clean up old icon file (keep last 2 to avoid race conditions)
-            if (_iconCounter > 1)
-            {
-                var oldIconPath = Path.Combine(_iconTempPath, $"icon_{_iconCounter - 2}.png");
-                if (File.Exists(oldIconPath))
-                {
-                    try { File.Delete(oldIconPath); } catch { }
-                }
-            }
-            
-            _iconCounter++;
-            _logger.Debug("Icon updated to frame {Counter}", _iconCounter);
         }
         catch (Exception ex)
         {
